@@ -134,6 +134,18 @@ menu "Muse"
             memory and preview decoding shares CPU time with voice and Link.
             Leave disabled to build without camera support.
 
+    config MUSE_PICKUP_WAKE
+        bool "Wake the screen when the board is picked up"
+        depends on MUSE_ENABLED
+        default y
+        help
+            On a board with a motion sensor (the M5Stack StickS3), lifting or
+            tilting it while the screen is asleep turns the screen back on,
+            as a button press does. It doesn't start listening. The sensor
+            is read every 100 ms while the screen sleeps, or about once a
+            second on battery, so on battery it can take a second to wake.
+            Boards without a sensor ignore this.
+
     config MUSE_CJK_FONT
         bool "Show Chinese and Japanese in captions"
         depends on MUSE_ENABLED

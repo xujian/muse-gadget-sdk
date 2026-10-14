@@ -22,6 +22,8 @@
  * enables the amp, and it measures the battery and USB voltages. Pins are from
  * M5's K150 schematic (v0.6); the register bits were read back from UiFlow2.
  */
+#include <string.h>
+
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "driver/ledc.h"
@@ -37,6 +39,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "bmi270_config.h"
 #include "muse_audio.h"
 #include "muse_board.h"
 #include "muse_mem.h"
@@ -82,8 +85,27 @@ static const char *TAG = "board";
 #define PMIC_VIN_MV 0x24           /* USB */
 #define SPK_PA_PIN 3               /* es8311's pa_pin, routed to the PMIC by s_pmic_gpio */
 
+/* Bosch BMI270 accelerometer and gyroscope; its interrupt goes to the PMIC,
+ * not the ESP32, so it's read over I2C. Registers from Bosch's datasheet. */
+#define IMU_ADDR 0x68
+#define IMU_CHIP_ID 0x00           /* reads 0x24 */
+#define IMU_ACC_X 0x0C             /* x, y, z: 16-bit little-endian */
+#define IMU_INTERNAL_STATUS 0x21   /* low nibble 1: configuration loaded */
+#define IMU_ACC_CONF 0x40
+#define IMU_ACC_RANGE 0x41
+#define IMU_INIT_CTRL 0x59
+#define IMU_INIT_ADDR 0x5B         /* 0x5B-0x5C: where the next INIT_DATA goes, in words */
+#define IMU_INIT_DATA 0x5E
+#define IMU_PWR_CONF 0x7C          /* bit 0: advanced power save */
+#define IMU_PWR_CTRL 0x7D          /* bit 2: accelerometer on */
+#define IMU_CMD 0x7E
+#define IMU_SOFT_RESET 0xB6
+#define IMU_ACC_25HZ_AVG4 0x26     /* power-optimized, 25 Hz, averaging 4 samples */
+#define IMU_CHUNK 64               /* configuration bytes per I2C write */
+
 static i2c_master_bus_handle_t s_i2c;
 static i2c_master_dev_handle_t s_pmic;
+static i2c_master_dev_handle_t s_imu;     /* NULL: the sensor didn't start */
 static esp_lcd_panel_handle_t s_panel;
 static muse_gpio_button_t s_talk, s_aux;
 
@@ -150,6 +172,66 @@ static const audio_codec_gpio_if_t s_pmic_gpio = {
     .get = pmic_gpio_get,
 };
 
+static esp_err_t imu_write(uint8_t reg, uint8_t val)
+{
+    uint8_t buf[2] = { reg, val };
+    return i2c_master_transmit(s_imu, buf, sizeof(buf), 50);
+}
+
+static esp_err_t imu_read(uint8_t reg, uint8_t *buf, size_t n)
+{
+    return i2c_master_transmit_receive(s_imu, &reg, 1, buf, n, 50);
+}
+
+/*
+ * Reset, load Bosch's configuration (without it the BMI270 measures nothing)
+ * and run the accelerometer alone at 25 Hz in power save, tens of microamps.
+ */
+static esp_err_t imu_start(void)
+{
+    uint8_t id = 0;
+    ESP_RETURN_ON_ERROR(imu_read(IMU_CHIP_ID, &id, 1), TAG, "imu id");
+    ESP_RETURN_ON_FALSE(id == 0x24, ESP_ERR_NOT_FOUND, TAG, "imu id %02x", id);
+    imu_write(IMU_CMD, IMU_SOFT_RESET);    /* answers with a NAK while it resets */
+    vTaskDelay(pdMS_TO_TICKS(3));
+    ESP_RETURN_ON_ERROR(imu_write(IMU_PWR_CONF, 0x00), TAG, "imu power save off");
+    vTaskDelay(pdMS_TO_TICKS(1));
+    ESP_RETURN_ON_ERROR(imu_write(IMU_INIT_CTRL, 0x00), TAG, "imu init start");
+    for (size_t at = 0; at < BMI270_CONFIG_SIZE; at += IMU_CHUNK) {
+        uint8_t addr[3] = { IMU_INIT_ADDR, (at / 2) & 0x0F, (at / 2) >> 4 };
+        uint8_t data[1 + IMU_CHUNK] = { IMU_INIT_DATA };
+        memcpy(data + 1, bmi270_config + at, IMU_CHUNK);
+        ESP_RETURN_ON_ERROR(i2c_master_transmit(s_imu, addr, sizeof(addr), 50), TAG, "imu init addr");
+        ESP_RETURN_ON_ERROR(i2c_master_transmit(s_imu, data, sizeof(data), 50), TAG, "imu init data");
+    }
+    ESP_RETURN_ON_ERROR(imu_write(IMU_INIT_CTRL, 0x01), TAG, "imu init end");
+    uint8_t status = 0;
+    for (int i = 0; i < 15 && (status & 0x0F) != 0x01; i++) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        imu_read(IMU_INTERNAL_STATUS, &status, 1);
+    }
+    ESP_RETURN_ON_FALSE((status & 0x0F) == 0x01, ESP_ERR_INVALID_RESPONSE, TAG, "imu status %02x", status);
+    ESP_RETURN_ON_ERROR(imu_write(IMU_ACC_CONF, IMU_ACC_25HZ_AVG4), TAG, "imu acc conf");
+    ESP_RETURN_ON_ERROR(imu_write(IMU_ACC_RANGE, 0x00), TAG, "imu range");    /* +-2 g */
+    ESP_RETURN_ON_ERROR(imu_write(IMU_PWR_CTRL, 0x04), TAG, "imu acc on");
+    return imu_write(IMU_PWR_CONF, 0x01);
+}
+
+static esp_err_t read_accel(int16_t mg[3])
+{
+    /* Quietly: the caller polls this every 100 ms while the screen sleeps. */
+    uint8_t b[6];
+    esp_err_t err = s_imu ? imu_read(IMU_ACC_X, b, sizeof(b)) : ESP_ERR_INVALID_STATE;
+    if (err != ESP_OK) {
+        return err;
+    }
+    for (int i = 0; i < 3; i++) {
+        int raw = (int16_t)(b[2 * i] | b[2 * i + 1] << 8);
+        mg[i] = (int16_t)(raw * 1000 / 16384);    /* +-2 g range */
+    }
+    return ESP_OK;
+}
+
 static esp_err_t init(void)
 {
     const i2c_master_bus_config_t i2c_cfg = {
@@ -181,6 +263,23 @@ static esp_err_t init(void)
      * and Muse's screen already shows its state. */
     ESP_RETURN_ON_ERROR(pmic_update(PMIC_PWR_CFG, PMIC_PWR_LED, false), TAG, "led off");
     vTaskDelay(pdMS_TO_TICKS(20));
+
+    /* Picking the board up wakes the screen; without the sensor, only the
+     * buttons do. */
+    const i2c_device_config_t imu_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = IMU_ADDR,
+        .scl_speed_hz = 400000,
+    };
+    if (i2c_master_bus_add_device(s_i2c, &imu_cfg, &s_imu) == ESP_OK && imu_start() == ESP_OK) {
+        ESP_LOGI(TAG, "BMI270 motion sensor ready");
+    } else {
+        ESP_LOGW(TAG, "no motion sensor: only the buttons wake the screen");
+        if (s_imu) {
+            i2c_master_bus_rm_device(s_imu);
+            s_imu = NULL;
+        }
+    }
 
     ESP_RETURN_ON_ERROR(muse_gpio_button_init(&s_talk, TALK_GPIO), TAG, "talk button");
     ESP_RETURN_ON_ERROR(muse_gpio_button_init(&s_aux, AUX_GPIO), TAG, "aux button");
@@ -388,6 +487,9 @@ static esp_err_t power_off(void)
     set_brightness(0);
     esp_lcd_panel_disp_on_off(s_panel, false);
     pmic_update(PMIC_GPIO_OUT, PMIC_SPK | PMIC_L3B, false);
+    if (s_imu) {
+        imu_write(IMU_PWR_CTRL, 0x00);    /* accelerometer off: only the buttons wake it */
+    }
     while (gpio_get_level(TALK_GPIO) == 0 || gpio_get_level(AUX_GPIO) == 0) {
         vTaskDelay(pdMS_TO_TICKS(20));
     }
@@ -425,6 +527,7 @@ static const muse_board_t s_board = {
     .poll_buttons = poll_buttons,
     .wait_buttons = wait_buttons,
     .read_power = read_power,
+    .read_accel = read_accel,
     .power_off = power_off,
 };
 

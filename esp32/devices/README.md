@@ -127,7 +127,10 @@ steps through the menu, as on the AIPI. Powering off from Muse turns off the
 screen, speaker and codec and puts the ESP32-S3 in deep sleep; either button
 wakes it. Double-click the power button for a full power-off, and click it to
 turn back on. Muse turns off the power chip's green LED, which would otherwise
-stay lit. The IMU, IR and Grove port aren't used yet.
+stay lit. Picking the board up while the screen is asleep wakes it, read
+from the BMI270 motion sensor (`CONFIG_MUSE_PICKUP_WAKE`); the sensor's
+interrupt goes to the power chip, so it can't wake the board from power-off.
+The IR and Grove port aren't used yet.
 [M5Unified](https://github.com/m5stack/M5Unified) is M5Stack's reference
 driver for the power chip and peripherals.
 

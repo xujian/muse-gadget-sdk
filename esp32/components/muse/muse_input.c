@@ -46,6 +46,9 @@
 #if CONFIG_MUSE_WATCHER_CAMERA
 #include "boards/watcher_camera.h"
 #endif
+#if CONFIG_MUSE_PICKUP_WAKE
+#include "muse_motion.h"
+#endif
 
 static const char *TAG = "muse_input";
 
@@ -62,6 +65,7 @@ static const char *TAG = "muse_input";
 #define HINT_TICKS 60          /* 0.6 s: warn that holding powers off */
 #define LONG_TICKS 150         /* 1.5 s: power off */
 #define SLEEP_CHECK_MS 100
+#define PICKUP_MS 100          /* asleep: read the motion sensor this often (paused: every wait) */
 
 #define SERIAL_RX 1024         /* the driver drops what doesn't fit, so a console line must */
 #define SERIAL_LINE 1024
@@ -310,6 +314,29 @@ static void check_sleep(void)
     }
 }
 
+#if CONFIG_MUSE_PICKUP_WAKE
+/* Asleep, a board with a motion sensor wakes when it's picked up. It only
+ * lights the screen: listening still takes the talk button. */
+static void check_pickup(TickType_t now)
+{
+    static bool was_asleep;
+    static TickType_t read_at;
+    bool asleep = muse_state_asleep();
+    if (asleep && !was_asleep) {
+        muse_motion_reset(pdTICKS_TO_MS(now));
+    }
+    was_asleep = asleep;
+    if (!asleep || now - read_at < pdMS_TO_TICKS(PICKUP_MS)) {
+        return;
+    }
+    read_at = now;
+    int16_t mg[3];
+    if (muse_board->read_accel(mg) == ESP_OK && muse_motion_update(mg, pdTICKS_TO_MS(now))) {
+        set_asleep(false, "picked up");
+    }
+}
+#endif
+
 static void set_cpu_low(bool low)
 {
 #if CONFIG_PM_ENABLE
@@ -439,6 +466,11 @@ static void input_task(void *arg)
             checked = now;
             check_sleep();
         }
+#if CONFIG_MUSE_PICKUP_WAKE
+        if (muse_board->read_accel) {
+            check_pickup(now);
+        }
+#endif
 
         if (now - powered >= pdMS_TO_TICKS(paused ? REST_POWER_MS : POWER_MS)) {
             powered = now;
@@ -607,6 +639,18 @@ static bool console_command(char *line, bool whole)
         s_nap_now = true;
         return true;
     }
+#if CONFIG_MUSE_PICKUP_WAKE
+    if (!strcmp(line, "accel")) {
+        int16_t mg[3];
+        if (muse_board->read_accel && muse_board->read_accel(mg) == ESP_OK) {
+            printf("@accel %d %d %d\n", mg[0], mg[1], mg[2]);
+        } else {
+            printf("@accel none\n");
+        }
+        fflush(stdout);
+        return true;
+    }
+#endif
     if (!strncmp(line, "face=", 5)) {
         set_face(line + 5);
         return true;
@@ -641,7 +685,8 @@ static bool console_command(char *line, bool whole)
  * the BLE CMD characteristic, or one of the console's own: "status" prints
  * the device's state, "power" the battery meter (muse_battery.h) and
  * "power.reset" starts it over, "nap" sleeps and leaves Wi-Fi at once (as
- * two minutes asleep on battery would; 'w' rejoins), "face=" shows a face
+ * two minutes asleep on battery would; 'w' rejoins), "accel" prints the
+ * motion sensor's reading in milli-g (pick-up wake), "face=" shows a face
  * (see set_face), and "chat=" sends a typed message to Hatch (see chat_line
  * and tools/muse/chat.py).
  */

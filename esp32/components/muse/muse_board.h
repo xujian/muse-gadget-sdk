@@ -96,6 +96,9 @@ typedef struct {
      * buttons needn't be polled. NULL: polled. */
     void (*wait_buttons)(int timeout_ms);
     esp_err_t (*read_power)(muse_power_t *out);
+    /* Acceleration in milli-g on the board's axes, read while the screen is
+     * asleep so picking the board up wakes it. NULL: no motion sensor. */
+    esp_err_t (*read_accel)(int16_t mg[3]);
     /* Turns the board off; returns only on failure. */
     esp_err_t (*power_off)(void);
 } muse_board_t;

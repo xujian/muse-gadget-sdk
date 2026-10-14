@@ -362,7 +362,8 @@ its animation (`jollybot.gif`, and `happy_anim.c/.h` made from it by
 `tools/gen_happy_anim.py`).
 
 Third-party code keeps its upstream license and header: `minimp3.h` (CC0) and
-`main/pixel_font.c` (BSD-2-Clause, Adafruit). Don't restyle them or replace
+`main/pixel_font.c` (BSD-2-Clause, Adafruit) and
+`components/muse/boards/bmi270_config.c` (BSD-3-Clause, Bosch Sensortec). Don't restyle them or replace
 their headers with the Apache one; `components/minimp3/README.md` says how to
 update minimp3.
 
