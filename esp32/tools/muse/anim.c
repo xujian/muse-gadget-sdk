@@ -39,6 +39,7 @@ typedef struct {
     float start_mode_t;     /* mode_t at the first recorded frame */
     bool talky;             /* drive `level` like live speech */
     bool pet;               /* play a happy reaction partway through */
+    bool wake;              /* play the pick-up wake-up partway through */
 } anim_t;
 
 static const anim_t ANIMS[] = {
@@ -48,6 +49,7 @@ static const anim_t ANIMS[] = {
     { "thinking", MUSE_MODE_THINKING, 4.0f, 0 },
     { "speaking", MUSE_MODE_SPEAKING, 4.0f, 0, .talky = true },
     { "happy", MUSE_MODE_IDLE, 3.0f, 9, .pet = true },
+    { "waking", MUSE_MODE_IDLE, 3.0f, 9, .wake = true },
     { "off", MUSE_MODE_OFF, 2.0f, 0 },
     { "error", MUSE_MODE_ERROR, 3.0f, 0 },
 };
@@ -69,6 +71,15 @@ static float happiness(float since_pet)
         return 0;
     }
     return left > 0.4f ? 1.0f : left / 0.4f;
+}
+
+/* Matches muse_state_waking(): 1 at the pick-up, down to 0 over 2.2 s. */
+static float waking(float since_pickup)
+{
+    if (since_pickup < 0 || since_pickup >= 2.2f) {
+        return 0;
+    }
+    return 1 - since_pickup / 2.2f;
 }
 
 static void save(const char *path)
@@ -105,6 +116,7 @@ int main(int argc, char **argv)
                 .mode_t = an->start_mode_t + rt,
                 .level = an->talky ? speech_level(rt) : 0,
                 .happy = an->pet ? happiness(rt - 0.5f) : 0,
+                .waking = an->wake ? waking(rt) : 0,
             };
             /* Modes that start at 0 hold their first frame during warm-up. */
             if (p.mode_t < 0) {

@@ -1518,6 +1518,7 @@ static void frame_tick(lv_timer_t *timer)
         .mode_t = mode_t,
         .level = s_level,
         .happy = muse_state_happiness(),
+        .waking = muse_state_waking(),
     };
     muse_pixel_render(&pose);
     invalidate_muse();

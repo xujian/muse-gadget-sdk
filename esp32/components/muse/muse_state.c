@@ -28,6 +28,7 @@
 #include "muse_text.h"
 
 #define HAPPY_SECS 1.6f
+#define WAKING_SECS 2.2f   /* the avatar struggling awake after a pick-up */
 
 #define AWAKE_BIT BIT0   /* while !s_asleep */
 #define NUDGE_BIT BIT1
@@ -38,6 +39,7 @@ static volatile float s_level;
 static volatile float s_progress;
 static volatile int64_t s_last_poke_us;
 static volatile int64_t s_happy_until_us;
+static volatile int64_t s_waking_until_us;
 static volatile bool s_asleep;
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -245,4 +247,15 @@ float muse_state_happiness(void)
     }
     /* Ease out over the last 0.4 s. */
     return left > 0.4f ? 1.0f : left / 0.4f;
+}
+
+void muse_state_make_waking(void)
+{
+    s_waking_until_us = esp_timer_get_time() + (int64_t)(WAKING_SECS * 1e6f);
+}
+
+float muse_state_waking(void)
+{
+    float left = (float)(s_waking_until_us - esp_timer_get_time()) / 1e6f;
+    return left > 0 ? left / WAKING_SECS : 0;
 }

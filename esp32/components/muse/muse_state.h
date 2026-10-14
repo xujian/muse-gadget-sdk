@@ -95,3 +95,8 @@ void muse_state_nudge(void);
 /* Touch/pet reaction. */
 void muse_state_make_happy(void);
 float muse_state_happiness(void);
+
+/* Picked up while asleep: the avatar struggles awake. muse_state_waking()
+ * runs from 1 down to 0 over 2.2 s; 0 the rest of the time. */
+void muse_state_make_waking(void);
+float muse_state_waking(void);

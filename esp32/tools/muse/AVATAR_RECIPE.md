@@ -18,8 +18,8 @@ limitations under the License.
 
 A board's default avatar is drawn by `avatar/muse_pixel.c`: a
 procedural 64x64 pixel-art renderer with an animation for each state (boot,
-idle, listening, thinking, speaking, error, off, and a happy reaction when
-you pet it). Your Muse has its own avatar, and it can redraw that avatar as
+idle, listening, thinking, speaking, error, off, a happy reaction when
+you pet it, and struggling awake when you pick it up). Your Muse has its own avatar, and it can redraw that avatar as
 a new `muse_pixel.c`.
 
 This recipe starts from the default avatar's code, but your avatar should be
@@ -122,7 +122,7 @@ says `Custom avatar: components/muse/avatar/muse_pixel.c` when it picks up your 
 - Preview without a board:
   `python3 tools/muse/make_gifs.py /tmp/avatar_gifs` draws your avatar (or
   the default avatar, with `--default`). There's one GIF for each of boot, idle,
-  listening, thinking, speaking, happy, off and error. Check each against the
+  listening, thinking, speaking, happy, waking, off and error. Check each against the
   animation beats in `avatar_prompt.md`.
 - If a state looks wrong, run `avatar.py --edit` with the GIF's name and what
   to change. Muse then edits its file rather than starting over.

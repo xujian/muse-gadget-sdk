@@ -40,6 +40,7 @@ API (muse_pixel.h, unchanged; implement exactly these)
       float mode_t;   // seconds in the current mode
       float level;    // 0..1 live audio level (mic when listening, voice when speaking)
       float happy;    // 0..1 pet reaction; rises to 1, eases out over ~1.6 s
+      float waking;   // 1 -> 0 over the 2.2 s after a pick-up woke the screen; 0 otherwise
   } muse_pose_t;
   uint32_t muse_pixel_accent(muse_mode_t mode);    // 0xRRGGBB accent for the UI around the avatar
   void muse_pixel_render(const muse_pose_t *pose); // draw one frame into the 64x64 grid
@@ -106,6 +107,12 @@ ANIMATION BEATS (every one of these, adapted to your body)
 - ERROR: X eyes, flat mouth, quick side-to-side shake for the first 0.6 s,
   "!" beside the head, red scheme. `happy` is ignored in ERROR.
 - OFF (powering down, ~1.3 s): waves goodbye, eyes close, glow fades out.
+- waking > 0 (picked up while asleep; elapsed = (1 - waking) * 2.2 s):
+  struggles to open its eyes. They start shut; two tries get partway (about
+  a third, then half), trembling with the effort, and the heavy lids sag
+  shut again; the third try opens them all the way with a small overshoot
+  by about 1.8 s. Lids close from the top. Ignore it in ERROR and while
+  happy.
 - happy > 0 (petted, in any mode but ERROR): hops, arms up and wiggling,
   happy ^^ eyes, big grin, two hearts floating up. It must read as joy at
   64 px.

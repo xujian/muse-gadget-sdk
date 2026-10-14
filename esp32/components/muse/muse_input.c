@@ -332,6 +332,7 @@ static void check_pickup(TickType_t now)
     read_at = now;
     int16_t mg[3];
     if (muse_board->read_accel(mg) == ESP_OK && muse_motion_update(mg, pdTICKS_TO_MS(now))) {
+        muse_state_make_waking();   /* the avatar struggles awake */
         set_asleep(false, "picked up");
     }
 }
@@ -564,7 +565,8 @@ static void chat_cancel(void)
 /*
  * Bench: puts the face in a mode ("face=thinking") until the voice path or
  * another "face=" moves it on. "face=happy" goes back to idle with the happy
- * hop, as a finished turn does.
+ * hop, as a finished turn does, and "face=waking" with the struggle awake a
+ * pick-up plays.
  */
 static void set_face(const char *name)
 {
@@ -579,8 +581,9 @@ static void set_face(const char *name)
     };
     muse_state_poke();
     bool happy = !strcmp(name, "happy");
-    if (happy) {
-        name = "idle";   /* where a finished turn hops to */
+    bool waking = !strcmp(name, "waking");
+    if (happy || waking) {
+        name = "idle";   /* where a finished turn hops to, and a pick-up wakes to */
     }
     for (int m = 0; m < MUSE_MODE_COUNT; m++) {
         if (!strcmp(name, modes[m])) {
@@ -589,10 +592,13 @@ static void set_face(const char *name)
             if (happy) {
                 muse_state_make_happy();
             }
+            if (waking) {
+                muse_state_make_waking();
+            }
             return;
         }
     }
-    printf("@face.error unknown face \"%s\": boot idle listening thinking speaking error off happy\n", name);
+    printf("@face.error unknown face \"%s\": boot idle listening thinking speaking error off happy waking\n", name);
     fflush(stdout);
 }
 

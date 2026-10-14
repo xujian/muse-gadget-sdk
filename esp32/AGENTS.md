@@ -144,7 +144,7 @@ For bench testing, `MUSE_BENCH=1 tools/muse/board.sh build|flash ...` adds
 `devices/sdkconfig.muse-bench` and uses `build-muse-<profile>-bench/`. That
 turns on screenshots: `tools/muse/snap.py PORT KEYS OUT.png` sends bench keys
 and saves the screen, and `>face=thinking` (or `idle`, `listening`,
-`speaking`, `error`, `boot`, `off`, `happy`) in KEYS picks the avatar mode first.
+`speaking`, `error`, `boot`, `off`, `happy`, `waking`) in KEYS picks the avatar mode first.
 Screenshots are off in normal builds because each one takes a buffer the size
 of the screen. `>face=` works in any build. Or run `idf.py` directly:
 
