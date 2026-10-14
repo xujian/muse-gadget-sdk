@@ -231,8 +231,15 @@ things you can change:
 
 - **Shorter answers.** Ask for them in the message itself, such as "Answer in
   one sentence."
-- **Spoken answers.** Send each reply's text to a text-to-speech API of your
-  choice and play the audio it returns. On boards with PSRAM, `start_tts` in
+- **Spoken answers.** On boards with PSRAM and a speaker, turn on **Speak
+  replies with ElevenLabs** in `idf.py -B <dir> menuconfig` (under "ESP32
+  Device SDK") and set your ElevenLabs API key there; the voice and the model
+  are next to it. Each reply's text then goes to ElevenLabs and the board
+  plays the speech, captions keeping pace. It uses your ElevenLabs credits for
+  every character spoken, and the key ships inside the firmware like the SDK
+  token, so give it a credit limit and never commit it. With the speaker off,
+  or when ElevenLabs can't be reached, replies are shown as text. For another
+  text-to-speech API, `start_tts` in
   [`components/muse/muse_chat_session.cpp`](components/muse/muse_chat_session.cpp)
   is the spot: it has the reply text, and the MP3 decoder, speaker and volume
   are already wired up there.
